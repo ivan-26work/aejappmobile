@@ -164,23 +164,12 @@
         .catch(err => console.error('❌ Erreur Service Worker', err));
     }
     
-    // Demande de permission pour les notifications push (après 5 secondes)
+    // Demande de permission pour les notifications push
     if ('Notification' in window && Notification.permission === 'default') {
       setTimeout(() => {
         Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
             console.log('✅ Notifications activées');
-            // S'abonner aux notifications push
-            if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.ready.then(registration => {
-                registration.pushManager.getSubscription().then(subscription => {
-                  if (!subscription) {
-                    console.log('📱 Prêt à recevoir des notifications push');
-                    // Ici, envoyer la clé d'abonnement au serveur
-                  }
-                });
-              });
-            }
           }
         });
       }, 5000);
@@ -191,7 +180,7 @@
       console.log('📱 Application ouverte en mode PWA (standalone)');
     }
     
-    // Fonction utilitaire pour les notifications (si non définie)
+    // Fonction utilitaire pour les notifications
     window.showNotification = function(message, type) {
       const notif = document.createElement('div');
       notif.className = `temp-notification ${type}`;
