@@ -708,3 +708,42 @@ body {
     flex: calc(33% - 8px);
   }
 }
+.notif-banner {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border-radius: 50px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  z-index: 1100;
+  animation: slideUp 0.3s ease;
+  max-width: 90%;
+}
+
+.notif-banner.success {
+  border-left: 4px solid #2e7d32;
+}
+.notif-banner.error {
+  border-left: 4px solid #d32f2f;
+}
+.notif-banner.warning {
+  border-left: 4px solid #e67e22;
+}
+
+.notif-banner .close-banner {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #999;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
