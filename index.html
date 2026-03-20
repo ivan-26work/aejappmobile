@@ -10,8 +10,8 @@
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json">
+  <!-- PWA Manifest - Chemin absolu depuis la racine -->
+  <link rel="manifest" href="/aejappmobile/manifest.json">
   <meta name="theme-color" content="#ff7e9f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -144,7 +144,7 @@
   <script>
     // Enregistrement du Service Worker pour PWA
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
+      navigator.serviceWorker.register('/aejappmobile/sw.js')
         .then(reg => {
           console.log('✅ Service Worker enregistré', reg);
           
@@ -154,7 +154,9 @@
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 console.log('🔄 Nouvelle version disponible, actualisez la page');
-                showNotification('Mise à jour disponible, actualisez la page', 'info');
+                if (typeof showNotification === 'function') {
+                  showNotification('Mise à jour disponible, actualisez la page', 'info');
+                }
               }
             });
           });
@@ -182,18 +184,6 @@
           }
         });
       }, 5000);
-    }
-    
-    // Fonction utilitaire pour les notifications (si non définie)
-    function showNotification(message, type) {
-      const notif = document.createElement('div');
-      notif.className = `temp-notification ${type}`;
-      notif.textContent = message;
-      document.body.appendChild(notif);
-      setTimeout(() => {
-        notif.style.opacity = '0';
-        setTimeout(() => notif.remove(), 300);
-      }, 3000);
     }
     
     // Vérifier si l'app est installée (PWA)
