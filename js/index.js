@@ -1,5 +1,5 @@
 // ===== index.js =====
-// PWA AEJ - VU Téléchargements - Mobile First
+// PWA AEJ - VU Téléchargements - Mobile First avec notifications push
 
 (function() {
   // ---------------------------------------------
@@ -43,6 +43,7 @@
       if (!sessionOk) return;
       await loadTotalStagiaires();
       await loadDownloads();
+      await setupPushNotifications();
       setupEventListeners();
     } catch (error) {
       console.error('Erreur initialisation:', error);
@@ -74,15 +75,95 @@
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) {
-        window.location.href = 'auth.html';
+        window.location.href = '/aejappmobile/auth.html';
         return false;
       }
       currentUser = user;
       return true;
     } catch (error) {
       console.error('Erreur session:', error);
-      window.location.href = 'auth.html';
+      window.location.href = '/aejappmobile/auth.html';
       return false;
+    }
+  }
+
+  // ---------------------------------------------
+  // NOTIFICATIONS PUSH
+  // ---------------------------------------------
+  async function getVapidPublicKey() {
+    try {
+      const { data, error } = await supabase
+        .from('vapid_config')
+        .select('public_key')
+        .single();
+      
+      if (error) {
+        console.error('Erreur récupération clé VAPID:', error);
+        return null;
+      }
+      return data.public_key;
+    } catch (error) {
+      console.error('Erreur:', error);
+      return null;
+    }
+  }
+
+  async function setupPushNotifications() {
+    // Vérifier les prérequis
+    if (!('Notification' in window)) {
+      console.log('Notifications non supportées');
+      return;
+    }
+    
+    if (Notification.permission !== 'granted') {
+      console.log('Permission non accordée');
+      return;
+    }
+    
+    if (!('serviceWorker' in navigator)) {
+      console.log('Service Worker non supporté');
+      return;
+    }
+    
+    try {
+      const vapidPublicKey = await getVapidPublicKey();
+      if (!vapidPublicKey) {
+        console.log('Clé VAPID non trouvée');
+        return;
+      }
+      
+      const registration = await navigator.serviceWorker.ready;
+      
+      // Vérifier si déjà abonné
+      let subscription = await registration.pushManager.getSubscription();
+      
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidPublicKey
+        });
+        console.log('✅ Nouvel abonnement push créé');
+      } else {
+        console.log('✅ Abonnement push existant');
+      }
+      
+      // Sauvegarder l'abonnement dans Supabase
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .upsert({
+          user_id: currentUser.id,
+          subscription: subscription,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      
+      if (error) {
+        console.error('Erreur sauvegarde abonnement:', error);
+      } else {
+        console.log('✅ Abonnement sauvegardé');
+      }
+      
+    } catch (error) {
+      console.error('Erreur abonnement push:', error);
     }
   }
 
@@ -410,7 +491,7 @@
       await supabase.auth.signOut();
       showNotification('Déconnexion réussie', 'success');
       setTimeout(() => {
-        window.location.href = 'auth.html';
+        window.location.href = '/aejappmobile/auth.html';
       }, 500);
     } catch (error) {
       console.error('Erreur déconnexion:', error);
