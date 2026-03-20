@@ -10,7 +10,7 @@
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   
-  <!-- PWA Manifest - Chemin absolu depuis la racine -->
+  <!-- PWA Manifest - Chemin absolu depuis la racine du site -->
   <link rel="manifest" href="/aejappmobile/manifest.json">
   <meta name="theme-color" content="#ff7e9f">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +18,7 @@
   <meta name="apple-mobile-web-app-title" content="AEJ">
   
   <!-- Styles -->
-  <link rel="stylesheet" href="css/index.css">
+  <link rel="stylesheet" href="/aejappmobile/css/index.css">
 </head>
 <body>
   <!-- LOADER INITIAL -->
@@ -115,15 +115,15 @@
 
     <!-- FOOTER NAVIGATION -->
     <footer class="footer-nav">
-      <a href="apropos.html" class="nav-link">
+      <a href="/aejappmobile/apropos.html" class="nav-link">
         <i class="fas fa-info-circle"></i>
         <span>À propos</span>
       </a>
-      <a href="contact.html" class="nav-link">
+      <a href="/aejappmobile/contact.html" class="nav-link">
         <i class="fas fa-envelope"></i>
         <span>Contact</span>
       </a>
-      <a href="confidentialite.html" class="nav-link">
+      <a href="/aejappmobile/confidentialite.html" class="nav-link">
         <i class="fas fa-lock"></i>
         <span>Confidentialité</span>
       </a>
@@ -139,8 +139,8 @@
   </main>
 
   <!-- Scripts -->
-  <script src="js/theme.js"></script>
-  <script src="js/index.js"></script>
+  <script src="/aejappmobile/js/theme.js"></script>
+  <script src="/aejappmobile/js/index.js"></script>
   <script>
     // Enregistrement du Service Worker pour PWA
     if ('serviceWorker' in navigator) {
@@ -190,6 +190,18 @@
     if (window.matchMedia('(display-mode: standalone)').matches) {
       console.log('📱 Application ouverte en mode PWA (standalone)');
     }
+    
+    // Fonction utilitaire pour les notifications (si non définie)
+    window.showNotification = function(message, type) {
+      const notif = document.createElement('div');
+      notif.className = `temp-notification ${type}`;
+      notif.textContent = message;
+      document.body.appendChild(notif);
+      setTimeout(() => {
+        notif.style.opacity = '0';
+        setTimeout(() => notif.remove(), 300);
+      }, 3000);
+    };
   </script>
 </body>
 </html>
