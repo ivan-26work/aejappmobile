@@ -10,7 +10,7 @@
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   
-  <!-- PWA Manifest - Chemin absolu depuis la racine du site -->
+  <!-- PWA Manifest -->
   <link rel="manifest" href="/aejappmobile/manifest.json">
   <meta name="theme-color" content="#ff7e9f">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +18,7 @@
   <meta name="apple-mobile-web-app-title" content="AEJ">
   
   <!-- Styles -->
-  <link rel="stylesheet" href="/aejappmobile/css/index.css">
+  <link rel="stylesheet" href="css/index.css">
 </head>
 <body>
   <!-- LOADER INITIAL -->
@@ -32,55 +32,34 @@
 
   <!-- CONTENU PRINCIPAL -->
   <main class="main-content">
-    <!-- HEADER -->
+    <!-- HEADER : recherche + refresh -->
     <header class="header">
-      <div class="header-left">
-        <div class="logo-icon">
-          <i class="fas fa-chart-line"></i>
-        </div>
-        <h1>AEJ</h1>
-      </div>
-      <div class="header-right">
-        <button class="refresh-btn" id="refreshBtn" title="Actualiser">
-          <i class="fas fa-sync-alt"></i>
-        </button>
-      </div>
-    </header>
-
-    <!-- BARRE DE RECHERCHE -->
-    <div class="search-section">
       <div class="search-container">
         <i class="fas fa-search search-icon"></i>
-        <input type="text" id="searchInput" class="search-input" placeholder="Rechercher (nom, prénom, matricule, date, téléphone)">
+        <input type="text" id="searchInput" class="search-input" placeholder="Rechercher...">
       </div>
-    </div>
+      <button class="refresh-btn" id="refreshBtn" title="Actualiser">
+        <i class="fas fa-sync-alt"></i>
+      </button>
+    </header>
 
-    <!-- STATISTIQUES -->
-    <div class="stats-section">
-      <div class="stat-card">
+    <!-- STATISTIQUES COMPACTES (juste icônes) -->
+    <div class="stats-compact">
+      <div class="stat-item" title="Total téléchargements">
         <i class="fas fa-download"></i>
-        <div class="stat-info">
-          <span class="stat-value" id="statTotal">0</span>
-          <span class="stat-label">Téléchargements</span>
-        </div>
+        <span id="statTotal">0</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-item" title="Stagiaires inscrits">
         <i class="fas fa-users"></i>
-        <div class="stat-info">
-          <span class="stat-value" id="statStagiaires">0</span>
-          <span class="stat-label">Stagiaires</span>
-        </div>
+        <span id="statStagiaires">0</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-item" title="Téléchargements ce mois">
         <i class="fas fa-calendar-alt"></i>
-        <div class="stat-info">
-          <span class="stat-value" id="statMois">0</span>
-          <span class="stat-label">Ce mois</span>
-        </div>
+        <span id="statMois">0</span>
       </div>
     </div>
 
-    <!-- FILTRES DATES -->
+    <!-- FILTRES DATES (scrollable) -->
     <div class="filters-section">
       <div class="filters-scroll" id="filtersScroll">
         <div class="filters-row" id="filtersRow">
@@ -89,7 +68,7 @@
       </div>
     </div>
 
-    <!-- GRILLE DES TÉLÉCHARGEMENTS -->
+    <!-- GRILLE DES TÉLÉCHARGEMENTS (scroll horizontal par date) -->
     <div class="downloads-container" id="downloadsContainer">
       <div class="empty-state">
         <i class="fas fa-download"></i>
@@ -140,57 +119,6 @@
 
   <!-- Scripts -->
   <script src="/aejappmobile/js/theme.js"></script>
-  <script src="/aejappmobile/js/index.js"></script>
-  <script>
-    // Enregistrement du Service Worker pour PWA
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/aejappmobile/sw.js')
-        .then(reg => {
-          console.log('✅ Service Worker enregistré', reg);
-          
-          // Gestion des mises à jour du Service Worker
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 Nouvelle version disponible, actualisez la page');
-                if (typeof showNotification === 'function') {
-                  showNotification('Mise à jour disponible, actualisez la page', 'info');
-                }
-              }
-            });
-          });
-        })
-        .catch(err => console.error('❌ Erreur Service Worker', err));
-    }
-    
-    // Demande de permission pour les notifications push
-    if ('Notification' in window && Notification.permission === 'default') {
-      setTimeout(() => {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            console.log('✅ Notifications activées');
-          }
-        });
-      }, 5000);
-    }
-    
-    // Vérifier si l'app est installée (PWA)
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      console.log('📱 Application ouverte en mode PWA (standalone)');
-    }
-    
-    // Fonction utilitaire pour les notifications
-    window.showNotification = function(message, type) {
-      const notif = document.createElement('div');
-      notif.className = `temp-notification ${type}`;
-      notif.textContent = message;
-      document.body.appendChild(notif);
-      setTimeout(() => {
-        notif.style.opacity = '0';
-        setTimeout(() => notif.remove(), 300);
-      }, 3000);
-    };
-  </script>
+  <script src="js/index.js"></script>
 </body>
 </html>
