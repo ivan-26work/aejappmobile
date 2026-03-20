@@ -1,0 +1,50 @@
+{
+  "name": "AEJ - Gestion des téléchargements",
+  "short_name": "AEJ",
+  "description": "Suivi des téléchargements des stagiaires - Agence Emploi Jeunes",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#ff7e9f",
+  "background_color": "#eef0f5",
+  "scope": "/",
+  "lang": "fr-FR",
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/assets/screenshot-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Liste des téléchargements"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Téléchargements",
+      "short_name": "Accueil",
+      "description": "Voir la liste des téléchargements",
+      "url": "/index.html",
+      "icons": [
+        {
+          "src": "/assets/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
