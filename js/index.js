@@ -1,5 +1,5 @@
 // ===== index.js =====
-// Version finale avec surveillance Realtime + notifications Chrome
+// Version optimisée - Mobile First avec scroll horizontal
 
 (function() {
   const SUPABASE_URL = 'https://lnwrwvwunwsqeuluupis.supabase.co';
@@ -11,10 +11,8 @@
   let filteredDownloads = [];
   let selectedDates = new Set();
   let searchTimeout = null;
-  let realtimeChannel = null;
-  let lastNotificationTime = 0;
 
-  // DOM
+  // DOM Elements
   const loadingOverlay = document.getElementById('loadingOverlay');
   const searchInput = document.getElementById('searchInput');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -28,6 +26,7 @@
   const detailsContent = document.getElementById('detailsContent');
   const logoutBtn = document.getElementById('logoutBtn');
 
+  // ========== INITIALISATION ==========
   async function init() {
     try {
       loadingOverlay?.classList.remove('hidden');
@@ -36,13 +35,13 @@
       if (!ok) return;
       await loadData();
       setupEvents();
-      setupRealtimeListener();
-      requestNotificationPermission();
+      // Demander les notifications après connexion
+      setTimeout(() => requestNotificationPermission(), 2000);
     } catch (e) {
       console.error(e);
       window.location.href = '/aejappmobile/auth.html';
     } finally {
-      setTimeout(() => loadingOverlay?.classList.add('hidden'), 800);
+      setTimeout(() => loadingOverlay?.classList.add('hidden'), 500);
     }
   }
 
@@ -62,7 +61,11 @@
 
   async function checkSession() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Timeout rapide de 3 secondes
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+      const getUser = supabase.auth.getUser();
+      const { data: { user } } = await Promise.race([getUser, timeout]);
+      
       if (!user) {
         window.location.href = '/aejappmobile/auth.html';
         return false;
@@ -70,6 +73,7 @@
       currentUser = user;
       return true;
     } catch (e) {
+      console.error('Session error:', e);
       window.location.href = '/aejappmobile/auth.html';
       return false;
     }
@@ -77,63 +81,30 @@
 
   // ========== NOTIFICATIONS ==========
   function requestNotificationPermission() {
-    if (!('Notification' in window)) {
-      console.log('Notifications non supportées');
-      return;
-    }
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
     
-    if (Notification.permission === 'granted') {
-      console.log('Notifications déjà autorisées');
-      showNotifBanner('Notifications actives', 'success');
-      return;
-    }
-    
-    if (Notification.permission === 'denied') {
-      showNotifBanner('Notifications désactivées. Activez-les dans les paramètres.', 'warning');
-      return;
-    }
-    
-    // Demander la permission
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        console.log('✅ Notifications autorisées');
-        showNotifBanner('Notifications activées !', 'success');
-      } else {
-        console.log('❌ Notifications refusées');
-        showNotifBanner('Notifications refusées', 'error');
+        console.log('✅ Notifications activées');
       }
     });
   }
 
   function showNotification(title, body) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    
-    // Éviter les doublons (1 notification toutes les 5 secondes max)
-    const now = Date.now();
-    if (now - lastNotificationTime < 5000) return;
-    lastNotificationTime = now;
-    
     try {
-      const notification = new Notification(title, {
+      new Notification(title, {
         body: body,
         icon: '/aejappmobile/assets/icon-192.png',
-        badge: '/aejappmobile/assets/icon-192.png',
-        vibrate: [200, 100, 200],
-        silent: false
+        vibrate: [200, 100, 200]
       });
-      
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
-      
-      console.log('📢 Notification affichée:', title);
     } catch (e) {
-      console.error('Erreur affichage notification:', e);
+      console.log('Notification error:', e);
     }
   }
 
-  function showNotifBanner(message, type) {
+  function showBanner(message, type = 'info') {
     const banner = document.createElement('div');
     banner.className = `notif-banner ${type}`;
     banner.innerHTML = `
@@ -143,60 +114,7 @@
     `;
     document.body.appendChild(banner);
     banner.querySelector('.close-banner').onclick = () => banner.remove();
-    setTimeout(() => banner.remove(), 5000);
-  }
-
-  // ========== REALTIME SURVEILLANCE ==========
-  function setupRealtimeListener() {
-    if (!supabase) return;
-    
-    // Nettoyer l'ancien canal si existe
-    if (realtimeChannel) {
-      supabase.removeChannel(realtimeChannel);
-    }
-    
-    console.log('📡 Connexion au canal Realtime...');
-    
-    // Créer un canal pour écouter la table telechargements
-    realtimeChannel = supabase
-      .channel('telechargements-watch')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'telechargements'
-        },
-        async (payload) => {
-          console.log('🔄 Nouveau téléchargement détecté!', payload);
-          
-          // Récupérer les infos du stagiaire
-          const { data: stagiaire } = await supabase
-            .from('securite')
-            .select('prenom, nom, matricule')
-            .eq('id', payload.new.user_id)
-            .single();
-          
-          const nom = stagiaire ? `${stagiaire.prenom} ${stagiaire.nom}` : 'Un stagiaire';
-          const matricule = stagiaire?.matricule || '';
-          
-          // Afficher la notification
-          showNotification(
-            '📥 Nouveau téléchargement',
-            `${nom} (${matricule}) a téléchargé sa fiche`
-          );
-          
-          // Rafraîchir la liste
-          await loadDownloads();
-          showNotifBanner(`Nouveau: ${nom}`, 'success');
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Realtime status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Écoute Realtime active sur telechargements');
-        }
-      });
+    setTimeout(() => banner.remove(), 3000);
   }
 
   // ========== CHARGEMENT DES DONNÉES ==========
@@ -213,13 +131,15 @@
 
   async function loadDownloads() {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('telechargements')
         .select(`
           id, date_telechargement, categorie, filiere, user_id,
           securite!inner (nom, prenom, matricule, telephone, filiere)
         `)
         .order('date_telechargement', { ascending: false });
+
+      if (error) throw error;
 
       allDownloads = (data || []).map(item => {
         const s = item.securite;
@@ -243,9 +163,20 @@
       updateStats();
       renderFilters();
       renderDownloads();
+      
+      // Notification pour les nouveaux (optionnel)
+      if (data && data.length > 0 && allDownloads.length > 0) {
+        const dernier = allDownloads[0];
+        const s = dernier;
+        if (s && s.prenom !== '-') {
+          showNotification('📥 Nouveau téléchargement', `${s.prenom} ${s.nom} a téléchargé sa fiche`);
+        }
+      }
     } catch (e) {
-      console.error(e);
-      if (downloadsContainer) downloadsContainer.innerHTML = '<div class="empty-state"><p>Erreur</p></div>';
+      console.error('Load error:', e);
+      if (downloadsContainer) {
+        downloadsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Erreur de chargement</p></div>';
+      }
     }
   }
 
@@ -257,6 +188,7 @@
     if (statMois) statMois.textContent = mois.length;
   }
 
+  // ========== FILTRES ==========
   function renderFilters() {
     if (!filtersRow) return;
     const map = new Map();
@@ -292,60 +224,125 @@
     renderDownloads();
   }
 
+  // ========== AFFICHAGE SCROLL HORIZONTAL ==========
   function renderDownloads() {
     if (!downloadsContainer) return;
     if (!filteredDownloads.length) {
       downloadsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-download"></i><p>Aucun téléchargement</p></div>';
       return;
     }
+
+    // Grouper par date
     const grouped = new Map();
     filteredDownloads.forEach(d => {
       if (!grouped.has(d.dateKey)) grouped.set(d.dateKey, []);
       grouped.get(d.dateKey).push(d);
     });
-    const sorted = Array.from(grouped.keys()).sort((a,b) => {
+
+    // Trier dates décroissantes
+    const sortedDates = Array.from(grouped.keys()).sort((a,b) => {
       const [da,ma,ya] = a.split('/').map(Number);
       const [db,mb,yb] = b.split('/').map(Number);
       return new Date(yb,mb-1,db) - new Date(ya,ma-1,da);
     });
+
     let html = '';
-    sorted.forEach(date => {
-      const items = grouped.get(date);
-      html += `<div class="date-group"><div class="date-header">📁 ${date}</div><div class="downloads-grid">`;
-      items.forEach(d => {
+    sortedDates.forEach(dateKey => {
+      const downloads = grouped.get(dateKey);
+      html += `
+        <div class="date-group">
+          <div class="date-header">📁 ${dateKey}</div>
+          <div class="horizontal-scroll">
+            <div class="cards-row">
+      `;
+      downloads.forEach(d => {
         html += `
           <div class="download-card" data-id="${d.id}">
             <div class="card-nom">${escapeHtml(d.prenom)} ${escapeHtml(d.nom)}</div>
             <div class="card-matricule">${escapeHtml(d.matricule)}</div>
             <div class="card-phone"><i class="fas fa-phone-alt"></i> ${formatPhone(d.telephone)}</div>
             <div class="card-actions">
-              <a href="https://wa.me/${waPhone(d.telephone)}" target="_blank" class="card-action-btn whatsapp"><i class="fab fa-whatsapp"></i></a>
-              <a href="tel:${callPhone(d.telephone)}" class="card-action-btn call"><i class="fas fa-phone-alt"></i></a>
+              <a href="https://wa.me/${waPhone(d.telephone)}" target="_blank" class="card-action-btn whatsapp" title="WhatsApp">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <a href="tel:${callPhone(d.telephone)}" class="card-action-btn call" title="Appeler">
+                <i class="fas fa-phone-alt"></i>
+              </a>
             </div>
           </div>
         `;
       });
-      html += `</div></div>`;
+      html += `
+            </div>
+          </div>
+        </div>
+      `;
     });
     downloadsContainer.innerHTML = html;
-    document.querySelectorAll('.download-card').forEach(c => {
-      c.addEventListener('click', () => showDetails(c.dataset.id));
+
+    // Écouteurs de clic
+    document.querySelectorAll('.download-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.id;
+        const download = filteredDownloads.find(d => d.id === id);
+        if (download) showDetails(download);
+      });
+      
+      // Appui long pour suppression
+      let pressTimer;
+      card.addEventListener('touchstart', (e) => {
+        pressTimer = setTimeout(() => {
+          const id = card.dataset.id;
+          const download = filteredDownloads.find(d => d.id === id);
+          if (download) confirmDelete(download);
+        }, 800);
+      });
+      card.addEventListener('touchend', () => clearTimeout(pressTimer));
+      card.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+      card.addEventListener('mousedown', () => {
+        pressTimer = setTimeout(() => {
+          const id = card.dataset.id;
+          const download = filteredDownloads.find(d => d.id === id);
+          if (download) confirmDelete(download);
+        }, 800);
+      });
+      card.addEventListener('mouseup', () => clearTimeout(pressTimer));
+      card.addEventListener('mouseleave', () => clearTimeout(pressTimer));
     });
   }
 
-  async function showDetails(id) {
-    const d = filteredDownloads.find(x => x.id === id);
-    if (!d) return;
-    const fileUrl = await getFileUrl(d.matricule);
+  // ========== SUPPRESSION ==========
+  async function confirmDelete(download) {
+    if (!confirm(`Supprimer le téléchargement de ${download.prenom} ${download.nom} ?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('telechargements')
+        .delete()
+        .eq('id', download.id);
+      
+      if (error) throw error;
+      
+      showBanner('Téléchargement supprimé', 'success');
+      await loadDownloads();
+    } catch (e) {
+      console.error('Delete error:', e);
+      showBanner('Erreur lors de la suppression', 'error');
+    }
+  }
+
+  // ========== DÉTAILS ==========
+  async function showDetails(download) {
+    const fileUrl = await getFileUrl(download.matricule);
     detailsContent.innerHTML = `
-      <div class="detail-row"><i class="fas fa-user"></i><strong>Nom</strong><span>${escapeHtml(d.prenom)} ${escapeHtml(d.nom)}</span></div>
-      <div class="detail-row"><i class="fas fa-id-card"></i><strong>Matricule</strong><span>${escapeHtml(d.matricule)}</span></div>
-      <div class="detail-row"><i class="fas fa-phone-alt"></i><strong>Téléphone</strong><span>${formatPhone(d.telephone)}</span></div>
-      <div class="detail-row"><i class="fas fa-graduation-cap"></i><strong>Filière</strong><span>${escapeHtml(d.filiere)}</span></div>
-      <div class="detail-row"><i class="fas fa-calendar"></i><strong>Date</strong><span>${d.dateFormatted}</span></div>
+      <div class="detail-row"><i class="fas fa-user"></i><strong>Nom</strong><span>${escapeHtml(download.prenom)} ${escapeHtml(download.nom)}</span></div>
+      <div class="detail-row"><i class="fas fa-id-card"></i><strong>Matricule</strong><span>${escapeHtml(download.matricule)}</span></div>
+      <div class="detail-row"><i class="fas fa-phone-alt"></i><strong>Téléphone</strong><span>${formatPhone(download.telephone)}</span></div>
+      <div class="detail-row"><i class="fas fa-graduation-cap"></i><strong>Filière</strong><span>${escapeHtml(download.filiere)}</span></div>
+      <div class="detail-row"><i class="fas fa-calendar"></i><strong>Date</strong><span>${download.dateFormatted}</span></div>
       <div class="detail-actions">
-        <a href="https://wa.me/${waPhone(d.telephone)}" target="_blank" class="detail-btn whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</a>
-        <a href="tel:${callPhone(d.telephone)}" class="detail-btn call"><i class="fas fa-phone-alt"></i> Appeler</a>
+        <a href="https://wa.me/${waPhone(download.telephone)}" target="_blank" class="detail-btn whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</a>
+        <a href="tel:${callPhone(download.telephone)}" class="detail-btn call"><i class="fas fa-phone-alt"></i> Appeler</a>
         ${fileUrl ? `<a href="${fileUrl}" target="_blank" class="detail-btn file"><i class="fas fa-file-pdf"></i> Voir la fiche</a>` : ''}
       </div>
     `;
@@ -361,6 +358,7 @@
     } catch { return null; }
   }
 
+  // ========== UTILITAIRES ==========
   function formatPhone(p) {
     if (!p || p === '-') return '-';
     const c = p.replace(/\D/g,'');
@@ -382,24 +380,38 @@
     return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
   }
 
+  // ========== ACTIONS ==========
+  async function refresh() {
+    showBanner('Actualisation...', 'info');
+    await loadData();
+    showBanner('Données actualisées', 'success');
+  }
+
   async function handleLogout() {
     if (!confirm('Déconnexion ?')) return;
-    if (realtimeChannel) supabase.removeChannel(realtimeChannel);
     await supabase.auth.signOut();
     window.location.href = '/aejappmobile/auth.html';
   }
 
+  // ========== ÉVÉNEMENTS ==========
   function setupEvents() {
-    if (searchInput) searchInput.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(applyFilters, 300);
-    });
-    refreshBtn?.addEventListener('click', () => { loadData(); });
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(applyFilters, 300);
+      });
+    }
+    refreshBtn?.addEventListener('click', refresh);
     logoutBtn?.addEventListener('click', handleLogout);
     closeDetailsOverlay?.addEventListener('click', () => detailsOverlay.classList.add('hidden'));
-    detailsOverlay?.addEventListener('click', e => { if (e.target === detailsOverlay) detailsOverlay.classList.add('hidden'); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') detailsOverlay?.classList.add('hidden'); });
+    detailsOverlay?.addEventListener('click', e => {
+      if (e.target === detailsOverlay) detailsOverlay.classList.add('hidden');
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') detailsOverlay?.classList.add('hidden');
+    });
   }
 
+  // ========== DÉMARRAGE ==========
   init();
 })();
