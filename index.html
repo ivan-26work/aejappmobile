@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>AEJ • Téléchargements</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#ff7e9f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AEJ">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/index.css">
+</head>
+<body>
+  <!-- LOADER INITIAL -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-card">
+      <div class="loading-spinner"></div>
+      <div class="loading-title">AEJ</div>
+      <p class="loading-text">Vérification...</p>
+    </div>
+  </div>
+
+  <!-- CONTENU PRINCIPAL -->
+  <main class="main-content">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo-icon">
+          <i class="fas fa-chart-line"></i>
+        </div>
+        <h1>AEJ</h1>
+      </div>
+      <div class="header-right">
+        <button class="refresh-btn" id="refreshBtn" title="Actualiser">
+          <i class="fas fa-sync-alt"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- BARRE DE RECHERCHE -->
+    <div class="search-section">
+      <div class="search-container">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text" id="searchInput" class="search-input" placeholder="Rechercher (nom, prénom, matricule, date, téléphone)">
+      </div>
+    </div>
+
+    <!-- STATISTIQUES -->
+    <div class="stats-section">
+      <div class="stat-card">
+        <i class="fas fa-download"></i>
+        <div class="stat-info">
+          <span class="stat-value" id="statTotal">0</span>
+          <span class="stat-label">Téléchargements</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <i class="fas fa-users"></i>
+        <div class="stat-info">
+          <span class="stat-value" id="statStagiaires">0</span>
+          <span class="stat-label">Stagiaires</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <i class="fas fa-calendar-alt"></i>
+        <div class="stat-info">
+          <span class="stat-value" id="statMois">0</span>
+          <span class="stat-label">Ce mois</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILTRES DATES -->
+    <div class="filters-section">
+      <div class="filters-scroll" id="filtersScroll">
+        <div class="filters-row" id="filtersRow">
+          <!-- Les filtres dates seront injectés par JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- GRILLE DES TÉLÉCHARGEMENTS -->
+    <div class="downloads-container" id="downloadsContainer">
+      <div class="empty-state">
+        <i class="fas fa-download"></i>
+        <p>Chargement des données...</p>
+      </div>
+    </div>
+
+    <!-- OVERLAY DÉTAILS -->
+    <div class="details-overlay hidden" id="detailsOverlay">
+      <div class="overlay-backdrop"></div>
+      <div class="overlay-content">
+        <div class="overlay-header">
+          <h3>Détails du téléchargement</h3>
+          <button class="close-overlay" id="closeDetailsOverlay">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="details-content" id="detailsContent">
+          <!-- Contenu dynamique -->
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER NAVIGATION -->
+    <footer class="footer-nav">
+      <a href="apropos.html" class="nav-link">
+        <i class="fas fa-info-circle"></i>
+        <span>À propos</span>
+      </a>
+      <a href="contact.html" class="nav-link">
+        <i class="fas fa-envelope"></i>
+        <span>Contact</span>
+      </a>
+      <a href="confidentialite.html" class="nav-link">
+        <i class="fas fa-lock"></i>
+        <span>Confidentialité</span>
+      </a>
+      <a href="https://agenceemploijeunes.ci/site/" target="_blank" class="nav-link" rel="noopener">
+        <i class="fas fa-external-link-alt"></i>
+        <span>AEJ</span>
+      </a>
+      <button id="logoutBtn" class="nav-link logout-btn">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Déconnexion</span>
+      </button>
+    </footer>
+  </main>
+
+  <!-- Scripts -->
+  <script src="js/theme.js"></script>
+  <script src="js/index.js"></script>
+  <script>
+    // Enregistrement du Service Worker pour PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker enregistré', reg))
+        .catch(err => console.error('Erreur Service Worker', err));
+    }
+  </script>
+</body>
+</html>
