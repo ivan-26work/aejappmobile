@@ -1,7 +1,10 @@
 // ===== index.js =====
-// Version qui fonctionnait avant les notifications
+// PWA AEJ - VU Téléchargements - Mobile First
 
 (function() {
+  // ---------------------------------------------
+  // CONFIGURATION
+  // ---------------------------------------------
   const SUPABASE_URL = 'https://lnwrwvwunwsqeuluupis.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxud3J3dnd1bndzcWV1bHV1cGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NjU2ODYsImV4cCI6MjA4OTM0MTY4Nn0.gfnPMtR3mNBFMTo3GtZ9t1A9_8gxEHY4loLgLdLJxLs';
 
@@ -9,9 +12,13 @@
   let currentUser = null;
   let allDownloads = [];
   let filteredDownloads = [];
+  let selectedDownload = null;
   let selectedDates = new Set();
   let searchTimeout = null;
 
+  // ---------------------------------------------
+  // ÉLÉMENTS DOM
+  // ---------------------------------------------
   const loadingOverlay = document.getElementById('loadingOverlay');
   const searchInput = document.getElementById('searchInput');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -25,19 +32,23 @@
   const detailsContent = document.getElementById('detailsContent');
   const logoutBtn = document.getElementById('logoutBtn');
 
+  // ---------------------------------------------
+  // INITIALISATION
+  // ---------------------------------------------
   async function init() {
     try {
       loadingOverlay?.classList.remove('hidden');
       await initSupabase();
-      const ok = await checkSession();
-      if (!ok) return;
-      await loadData();
-      setupEvents();
-    } catch (e) {
-      console.error(e);
-      window.location.href = '/aejappmobile/auth.html';
+      const sessionOk = await checkSession();
+      if (!sessionOk) return;
+      await loadTotalStagiaires();
+      await loadDownloads();
+      setupEventListeners();
+    } catch (error) {
+      console.error('Erreur initialisation:', error);
+      showNotification('Erreur de chargement', 'error');
     } finally {
-      setTimeout(() => loadingOverlay?.classList.add('hidden'), 800);
+      setTimeout(() => loadingOverlay?.classList.add('hidden'), 500);
     }
   }
 
@@ -45,230 +56,456 @@
     if (window.supabase?.createClient) {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } else {
-      await new Promise(r => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-        s.onload = r;
-        document.head.appendChild(s);
-      });
+      await loadScript();
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     }
   }
 
+  function loadScript() {
+    return new Promise(resolve => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      script.onload = resolve;
+      document.head.appendChild(script);
+    });
+  }
+
   async function checkSession() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        window.location.href = '/aejappmobile/auth.html';
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        window.location.href = 'auth.html';
         return false;
       }
       currentUser = user;
       return true;
-    } catch (e) {
-      window.location.href = '/aejappmobile/auth.html';
+    } catch (error) {
+      console.error('Erreur session:', error);
+      window.location.href = 'auth.html';
       return false;
     }
   }
 
-  async function loadData() {
-    await Promise.all([loadStagiaires(), loadDownloads()]);
-  }
-
-  async function loadStagiaires() {
+  // ---------------------------------------------
+  // CHARGEMENT DONNÉES
+  // ---------------------------------------------
+  async function loadTotalStagiaires() {
     try {
-      const { count } = await supabase.from('securite').select('*', { count: 'exact', head: true });
+      const { count, error } = await supabase
+        .from('securite')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) throw error;
       if (statStagiaires) statStagiaires.textContent = count || 0;
-    } catch (e) { if (statStagiaires) statStagiaires.textContent = '0'; }
+    } catch (error) {
+      console.error('Erreur chargement stagiaires:', error);
+      if (statStagiaires) statStagiaires.textContent = '0';
+    }
   }
 
   async function loadDownloads() {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('telechargements')
         .select(`
-          id, date_telechargement, categorie, filiere, user_id,
-          securite!inner (nom, prenom, matricule, telephone, filiere)
+          id,
+          date_telechargement,
+          categorie,
+          filiere,
+          user_id,
+          securite!inner (
+            nom,
+            prenom,
+            matricule,
+            telephone,
+            filiere
+          )
         `)
         .order('date_telechargement', { ascending: false });
 
+      if (error) throw error;
+
       allDownloads = (data || []).map(item => {
         const s = item.securite;
-        const d = new Date(item.date_telechargement);
-        const dateKey = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
         return {
           id: item.id,
           date: item.date_telechargement,
-          dateKey: dateKey,
-          dateFormatted: `${dateKey} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+          dateFormatted: formatDateDisplay(item.date_telechargement),
+          dateKey: formatDateKey(item.date_telechargement),
+          categorie: item.categorie || 'Fiche',
+          filiere: item.filiere || s?.filiere || '-',
           nom: s?.nom || '-',
           prenom: s?.prenom || '-',
           matricule: s?.matricule || '-',
           telephone: s?.telephone || '-',
-          filiere: item.filiere || s?.filiere || '-',
-          categorie: item.categorie || 'Fiche'
+          user_id: item.user_id
         };
       });
 
       filteredDownloads = [...allDownloads];
       updateStats();
-      renderFilters();
+      updateFiltersUI();
       renderDownloads();
-    } catch (e) {
-      console.error(e);
-      if (downloadsContainer) downloadsContainer.innerHTML = '<div class="empty-state"><p>Erreur</p></div>';
+      
+    } catch (error) {
+      console.error('Erreur chargement téléchargements:', error);
+      showNotification('Erreur chargement des données', 'error');
+      if (downloadsContainer) {
+        downloadsContainer.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>Erreur de chargement</p>
+          </div>
+        `;
+      }
     }
   }
 
   function updateStats() {
     if (statTotal) statTotal.textContent = allDownloads.length;
+    
     const now = new Date();
     const debutMois = new Date(now.getFullYear(), now.getMonth(), 1);
-    const mois = allDownloads.filter(d => new Date(d.date) >= debutMois);
-    if (statMois) statMois.textContent = mois.length;
+    const downloadsMois = allDownloads.filter(d => new Date(d.date) >= debutMois);
+    if (statMois) statMois.textContent = downloadsMois.length;
   }
 
-  function renderFilters() {
+  // ---------------------------------------------
+  // FILTRES DATES
+  // ---------------------------------------------
+  function updateFiltersUI() {
     if (!filtersRow) return;
-    const map = new Map();
+
+    const datesMap = new Map();
     allDownloads.forEach(d => {
-      if (!map.has(d.dateKey)) map.set(d.dateKey, 0);
-      map.set(d.dateKey, map.get(d.dateKey) + 1);
+      if (!datesMap.has(d.dateKey)) {
+        datesMap.set(d.dateKey, { count: 0, date: d.date });
+      }
+      datesMap.get(d.dateKey).count++;
     });
-    const dates = Array.from(map.keys()).sort((a,b) => {
-      const [da,ma,ya] = a.split('/').map(Number);
-      const [db,mb,yb] = b.split('/').map(Number);
-      return new Date(yb,mb-1,db) - new Date(ya,ma-1,da);
+
+    const sortedDates = Array.from(datesMap.entries()).sort((a, b) => {
+      return new Date(b[1].date) - new Date(a[1].date);
     });
-    filtersRow.innerHTML = dates.map(d => `<div class="filter-pill ${selectedDates.has(d) ? 'active' : ''}" data-date="${d}">${d} (${map.get(d)})</div>`).join('');
-    document.querySelectorAll('.filter-pill').forEach(p => {
-      p.addEventListener('click', () => {
-        const date = p.dataset.date;
-        if (selectedDates.has(date)) selectedDates.delete(date);
-        else selectedDates.add(date);
-        renderFilters();
+
+    filtersRow.innerHTML = sortedDates.map(([dateKey, info]) => `
+      <div class="filter-pill ${selectedDates.has(dateKey) ? 'active' : ''}" data-date="${dateKey}">
+        <i class="fas fa-calendar"></i>
+        <span>${dateKey}</span>
+        <span class="filter-count">(${info.count})</span>
+      </div>
+    `).join('');
+
+    document.querySelectorAll('.filter-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const date = pill.dataset.date;
+        if (selectedDates.has(date)) {
+          selectedDates.delete(date);
+        } else {
+          selectedDates.add(date);
+        }
+        updateFiltersUI();
         applyFilters();
       });
     });
   }
 
   function applyFilters() {
-    let f = [...allDownloads];
-    if (selectedDates.size) f = f.filter(d => selectedDates.has(d.dateKey));
-    const term = searchInput?.value.toLowerCase().trim();
-    if (term) {
-      f = f.filter(d => d.nom.toLowerCase().includes(term) || d.prenom.toLowerCase().includes(term) || d.matricule.includes(term));
+    let filtered = [...allDownloads];
+
+    if (selectedDates.size > 0) {
+      filtered = filtered.filter(d => selectedDates.has(d.dateKey));
     }
-    filteredDownloads = f;
+
+    const searchTerm = searchInput?.value.toLowerCase().trim();
+    if (searchTerm) {
+      filtered = filtered.filter(d => 
+        d.nom.toLowerCase().includes(searchTerm) ||
+        d.prenom.toLowerCase().includes(searchTerm) ||
+        d.matricule.toLowerCase().includes(searchTerm) ||
+        d.dateKey.includes(searchTerm) ||
+        d.telephone.includes(searchTerm)
+      );
+    }
+
+    filteredDownloads = filtered;
     renderDownloads();
   }
 
+  // ---------------------------------------------
+  // RECHERCHE
+  // ---------------------------------------------
+  function setupSearch() {
+    if (!searchInput) return;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => applyFilters(), 300);
+    });
+  }
+
+  // ---------------------------------------------
+  // AFFICHAGE DES CARTES
+  // ---------------------------------------------
   function renderDownloads() {
     if (!downloadsContainer) return;
-    if (!filteredDownloads.length) {
-      downloadsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-download"></i><p>Aucun téléchargement</p></div>';
+
+    if (filteredDownloads.length === 0) {
+      downloadsContainer.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-download"></i>
+          <p>Aucun téléchargement trouvé</p>
+        </div>
+      `;
       return;
     }
-    const grouped = new Map();
+
+    const groupedByDate = new Map();
     filteredDownloads.forEach(d => {
-      if (!grouped.has(d.dateKey)) grouped.set(d.dateKey, []);
-      grouped.get(d.dateKey).push(d);
+      if (!groupedByDate.has(d.dateKey)) {
+        groupedByDate.set(d.dateKey, []);
+      }
+      groupedByDate.get(d.dateKey).push(d);
     });
-    const sorted = Array.from(grouped.keys()).sort((a,b) => {
-      const [da,ma,ya] = a.split('/').map(Number);
-      const [db,mb,yb] = b.split('/').map(Number);
-      return new Date(yb,mb-1,db) - new Date(ya,ma-1,da);
+
+    const sortedDates = Array.from(groupedByDate.keys()).sort((a, b) => {
+      const [da, ma, ya] = a.split('/').map(Number);
+      const [db, mb, yb] = b.split('/').map(Number);
+      return new Date(yb, mb-1, db) - new Date(ya, ma-1, da);
     });
+
     let html = '';
-    sorted.forEach(date => {
-      const items = grouped.get(date);
-      html += `<div class="date-group"><div class="date-header">📁 ${date}</div><div class="downloads-grid">`;
-      items.forEach(d => {
+    sortedDates.forEach(dateKey => {
+      const downloads = groupedByDate.get(dateKey);
+      html += `
+        <div class="date-group">
+          <div class="date-header">📁 ${dateKey}</div>
+          <div class="downloads-grid">
+      `;
+
+      downloads.forEach(d => {
         html += `
           <div class="download-card" data-id="${d.id}">
             <div class="card-nom">${escapeHtml(d.prenom)} ${escapeHtml(d.nom)}</div>
             <div class="card-matricule">${escapeHtml(d.matricule)}</div>
-            <div class="card-phone"><i class="fas fa-phone-alt"></i> ${formatPhone(d.telephone)}</div>
+            <div class="card-phone">
+              <i class="fas fa-phone-alt"></i>
+              ${formatPhoneNumber(d.telephone)}
+            </div>
+            <div class="card-date">
+              <i class="fas fa-calendar"></i>
+              ${d.dateKey}
+            </div>
             <div class="card-actions">
-              <a href="https://wa.me/${waPhone(d.telephone)}" target="_blank" class="card-action-btn whatsapp"><i class="fab fa-whatsapp"></i></a>
-              <a href="tel:${callPhone(d.telephone)}" class="card-action-btn call"><i class="fas fa-phone-alt"></i></a>
+              <a href="https://wa.me/${formatPhoneForWhatsApp(d.telephone)}" target="_blank" class="card-action-btn whatsapp" title="WhatsApp">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <a href="tel:${formatPhoneForCall(d.telephone)}" class="card-action-btn call" title="Appeler">
+                <i class="fas fa-phone-alt"></i>
+              </a>
             </div>
           </div>
         `;
       });
+
       html += `</div></div>`;
     });
+
     downloadsContainer.innerHTML = html;
-    document.querySelectorAll('.download-card').forEach(c => {
-      c.addEventListener('click', () => showDetails(c.dataset.id));
+
+    document.querySelectorAll('.download-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.id;
+        const download = filteredDownloads.find(d => d.id === id);
+        if (download) showDetails(download);
+      });
     });
   }
 
-  async function showDetails(id) {
-    const d = filteredDownloads.find(x => x.id === id);
-    if (!d) return;
-    const fileUrl = await getFileUrl(d.matricule);
+  // ---------------------------------------------
+  // DÉTAILS OVERLAY
+  // ---------------------------------------------
+  async function showDetails(download) {
+    selectedDownload = download;
+    const fileUrl = await getFileUrl(download.matricule);
+    
     detailsContent.innerHTML = `
-      <div class="detail-row"><i class="fas fa-user"></i><strong>Nom</strong><span>${escapeHtml(d.prenom)} ${escapeHtml(d.nom)}</span></div>
-      <div class="detail-row"><i class="fas fa-id-card"></i><strong>Matricule</strong><span>${escapeHtml(d.matricule)}</span></div>
-      <div class="detail-row"><i class="fas fa-phone-alt"></i><strong>Téléphone</strong><span>${formatPhone(d.telephone)}</span></div>
-      <div class="detail-row"><i class="fas fa-graduation-cap"></i><strong>Filière</strong><span>${escapeHtml(d.filiere)}</span></div>
-      <div class="detail-row"><i class="fas fa-calendar"></i><strong>Date</strong><span>${d.dateFormatted}</span></div>
+      <div class="detail-row">
+        <i class="fas fa-user"></i>
+        <strong>Nom complet</strong>
+        <span>${escapeHtml(download.prenom)} ${escapeHtml(download.nom)}</span>
+      </div>
+      <div class="detail-row">
+        <i class="fas fa-id-card"></i>
+        <strong>Matricule</strong>
+        <span>${escapeHtml(download.matricule)}</span>
+      </div>
+      <div class="detail-row">
+        <i class="fas fa-phone-alt"></i>
+        <strong>Téléphone</strong>
+        <span>${formatPhoneNumber(download.telephone)}</span>
+      </div>
+      <div class="detail-row">
+        <i class="fas fa-graduation-cap"></i>
+        <strong>Filière</strong>
+        <span>${escapeHtml(download.filiere)}</span>
+      </div>
+      <div class="detail-row">
+        <i class="fas fa-calendar"></i>
+        <strong>Date</strong>
+        <span>${download.dateFormatted}</span>
+      </div>
+      <div class="detail-row">
+        <i class="fas fa-tag"></i>
+        <strong>Catégorie</strong>
+        <span>${escapeHtml(download.categorie)}</span>
+      </div>
       <div class="detail-actions">
-        <a href="https://wa.me/${waPhone(d.telephone)}" target="_blank" class="detail-btn whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</a>
-        <a href="tel:${callPhone(d.telephone)}" class="detail-btn call"><i class="fas fa-phone-alt"></i> Appeler</a>
-        ${fileUrl ? `<a href="${fileUrl}" target="_blank" class="detail-btn file"><i class="fas fa-file-pdf"></i> Voir la fiche</a>` : ''}
+        <a href="https://wa.me/${formatPhoneForWhatsApp(download.telephone)}" target="_blank" class="detail-btn whatsapp">
+          <i class="fab fa-whatsapp"></i> WhatsApp
+        </a>
+        <a href="tel:${formatPhoneForCall(download.telephone)}" class="detail-btn call">
+          <i class="fas fa-phone-alt"></i> Appeler
+        </a>
+        ${fileUrl ? `<a href="${fileUrl}" target="_blank" class="detail-btn file">
+          <i class="fas fa-file-pdf"></i> Voir la fiche
+        </a>` : ''}
       </div>
     `;
+    
     detailsOverlay.classList.remove('hidden');
   }
 
   async function getFileUrl(matricule) {
     try {
-      const { data } = await supabase.from('fichiers').select('chemin_storage,bucket').filter('nom','ilike',`${matricule}%`).limit(1);
-      if (!data?.length) return null;
-      const { data: url } = supabase.storage.from(data[0].bucket).getPublicUrl(data[0].chemin_storage);
-      return url.publicUrl;
-    } catch { return null; }
+      const { data, error } = await supabase
+        .from('fichiers')
+        .select('chemin_storage, bucket')
+        .filter('nom', 'ilike', `${matricule}%`)
+        .limit(1);
+      
+      if (error || !data || data.length === 0) return null;
+      
+      const { data: urlData } = supabase.storage
+        .from(data[0].bucket || 'fichiers')
+        .getPublicUrl(data[0].chemin_storage);
+      
+      return urlData.publicUrl;
+    } catch (e) {
+      return null;
+    }
   }
 
-  function formatPhone(p) {
-    if (!p || p === '-') return '-';
-    const c = p.replace(/\D/g,'');
-    if (c.length === 10) return c.replace(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/,'$1 $2 $3 $4 $5');
-    return p;
-  }
-  function waPhone(p) {
-    if (!p || p === '-') return '';
-    const c = p.replace(/\D/g,'');
-    return c.length === 10 ? `225${c}` : c;
-  }
-  function callPhone(p) {
-    if (!p || p === '-') return '';
-    const c = p.replace(/\D/g,'');
-    return c.length === 10 ? `+225${c}` : `+${c}`;
-  }
-  function escapeHtml(s) {
-    if (!s) return '';
-    return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
+  function closeDetails() {
+    detailsOverlay?.classList.add('hidden');
+    selectedDownload = null;
   }
 
+  // ---------------------------------------------
+  // DÉCONNEXION
+  // ---------------------------------------------
   async function handleLogout() {
-    if (!confirm('Déconnexion ?')) return;
-    await supabase.auth.signOut();
-    window.location.href = '/aejappmobile/auth.html';
+    if (!confirm('Voulez-vous vraiment vous déconnecter ?')) return;
+    
+    try {
+      await supabase.auth.signOut();
+      showNotification('Déconnexion réussie', 'success');
+      setTimeout(() => {
+        window.location.href = 'auth.html';
+      }, 500);
+    } catch (error) {
+      console.error('Erreur déconnexion:', error);
+      showNotification('Erreur lors de la déconnexion', 'error');
+    }
   }
 
-  function setupEvents() {
-    if (searchInput) searchInput.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(applyFilters, 300);
+  // ---------------------------------------------
+  // RAFRAÎCHISSEMENT
+  // ---------------------------------------------
+  async function refreshData() {
+    showNotification('Actualisation...', 'info');
+    await loadTotalStagiaires();
+    await loadDownloads();
+    showNotification('Données actualisées', 'success');
+  }
+
+  // ---------------------------------------------
+  // UTILITAIRES
+  // ---------------------------------------------
+  function formatDateKey(date) {
+    const d = new Date(date);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+
+  function formatDateDisplay(date) {
+    const d = new Date(date);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function formatPhoneNumber(phone) {
+    if (!phone || phone === '-') return '-';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) {
+      return cleaned.replace(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5');
+    }
+    return phone;
+  }
+
+  function formatPhoneForWhatsApp(phone) {
+    if (!phone || phone === '-') return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) return `225${cleaned}`;
+    return cleaned;
+  }
+
+  function formatPhoneForCall(phone) {
+    if (!phone || phone === '-') return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) return `+225${cleaned}`;
+    return `+${cleaned}`;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, m => {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
     });
-    refreshBtn?.addEventListener('click', () => { loadData(); });
-    logoutBtn?.addEventListener('click', handleLogout);
-    closeDetailsOverlay?.addEventListener('click', () => detailsOverlay.classList.add('hidden'));
-    detailsOverlay?.addEventListener('click', e => { if (e.target === detailsOverlay) detailsOverlay.classList.add('hidden'); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') detailsOverlay?.classList.add('hidden'); });
   }
 
+  function showNotification(message, type = 'info') {
+    const notif = document.createElement('div');
+    notif.className = `temp-notification ${type}`;
+    notif.textContent = message;
+    document.body.appendChild(notif);
+    setTimeout(() => {
+      notif.style.opacity = '0';
+      setTimeout(() => notif.remove(), 300);
+    }, 3000);
+  }
+
+  // ---------------------------------------------
+  // ÉCOUTEURS
+  // ---------------------------------------------
+  function setupEventListeners() {
+    setupSearch();
+    refreshBtn?.addEventListener('click', refreshData);
+    logoutBtn?.addEventListener('click', handleLogout);
+    closeDetailsOverlay?.addEventListener('click', closeDetails);
+    detailsOverlay?.addEventListener('click', (e) => {
+      if (e.target === detailsOverlay) closeDetails();
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !detailsOverlay?.classList.contains('hidden')) {
+        closeDetails();
+      }
+    });
+  }
+
+  // ---------------------------------------------
+  // DÉMARRAGE
+  // ---------------------------------------------
   init();
 })();
