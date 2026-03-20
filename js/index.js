@@ -1,5 +1,5 @@
 // ===== index.js =====
-// Version avec demande de permission notifications après connexion
+// Version finale avec surveillance Realtime + notifications Chrome
 
 (function() {
   const SUPABASE_URL = 'https://lnwrwvwunwsqeuluupis.supabase.co';
@@ -11,7 +11,10 @@
   let filteredDownloads = [];
   let selectedDates = new Set();
   let searchTimeout = null;
+  let realtimeChannel = null;
+  let lastNotificationTime = 0;
 
+  // DOM
   const loadingOverlay = document.getElementById('loadingOverlay');
   const searchInput = document.getElementById('searchInput');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -33,8 +36,8 @@
       if (!ok) return;
       await loadData();
       setupEvents();
-      // Demander les notifications après connexion
-      setTimeout(() => askNotificationPermission(), 2000);
+      setupRealtimeListener();
+      requestNotificationPermission();
     } catch (e) {
       console.error(e);
       window.location.href = '/aejappmobile/auth.html';
@@ -72,8 +75,8 @@
     }
   }
 
-  // ========== NOTIFICATIONS PUSH ==========
-  async function askNotificationPermission() {
+  // ========== NOTIFICATIONS ==========
+  function requestNotificationPermission() {
     if (!('Notification' in window)) {
       console.log('Notifications non supportées');
       return;
@@ -81,76 +84,52 @@
     
     if (Notification.permission === 'granted') {
       console.log('Notifications déjà autorisées');
-      subscribeToPush();
+      showNotifBanner('Notifications actives', 'success');
       return;
     }
     
     if (Notification.permission === 'denied') {
-      console.log('Notifications refusées');
-      showNotifBanner('Notifications désactivées. Activez-les dans les paramètres pour recevoir les alertes.', 'warning');
+      showNotifBanner('Notifications désactivées. Activez-les dans les paramètres.', 'warning');
       return;
     }
     
     // Demander la permission
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      console.log('✅ Notifications autorisées');
-      showNotifBanner('Notifications activées ! Vous recevrez les alertes de nouveaux téléchargements.', 'success');
-      subscribeToPush();
-    } else {
-      console.log('❌ Notifications refusées');
-      showNotifBanner('Notifications refusées. Vous ne recevrez pas les alertes.', 'error');
-    }
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        console.log('✅ Notifications autorisées');
+        showNotifBanner('Notifications activées !', 'success');
+      } else {
+        console.log('❌ Notifications refusées');
+        showNotifBanner('Notifications refusées', 'error');
+      }
+    });
   }
 
-  async function subscribeToPush() {
-    if (!('serviceWorker' in navigator)) {
-      console.log('Service Worker non supporté');
-      return;
-    }
+  function showNotification(title, body) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    
+    // Éviter les doublons (1 notification toutes les 5 secondes max)
+    const now = Date.now();
+    if (now - lastNotificationTime < 5000) return;
+    lastNotificationTime = now;
     
     try {
-      // Récupérer la clé VAPID publique
-      const { data: vapid } = await supabase
-        .from('vapid_config')
-        .select('public_key')
-        .single();
+      const notification = new Notification(title, {
+        body: body,
+        icon: '/aejappmobile/assets/icon-192.png',
+        badge: '/aejappmobile/assets/icon-192.png',
+        vibrate: [200, 100, 200],
+        silent: false
+      });
       
-      if (!vapid?.public_key) {
-        console.log('Clé VAPID non trouvée');
-        return;
-      }
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
       
-      const registration = await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
-      
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: vapid.public_key
-        });
-        console.log('✅ Abonnement push créé');
-      } else {
-        console.log('✅ Abonnement push existant');
-      }
-      
-      // Sauvegarder l'abonnement
-      const { error } = await supabase
-        .from('push_subscriptions')
-        .upsert({
-          user_id: currentUser.id,
-          subscription: subscription,
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error) {
-        console.error('Erreur sauvegarde:', error);
-      } else {
-        console.log('✅ Abonnement sauvegardé');
-      }
-      
-    } catch (error) {
-      console.error('Erreur abonnement push:', error);
+      console.log('📢 Notification affichée:', title);
+    } catch (e) {
+      console.error('Erreur affichage notification:', e);
     }
   }
 
@@ -163,9 +142,61 @@
       <button class="close-banner">&times;</button>
     `;
     document.body.appendChild(banner);
-    
     banner.querySelector('.close-banner').onclick = () => banner.remove();
     setTimeout(() => banner.remove(), 5000);
+  }
+
+  // ========== REALTIME SURVEILLANCE ==========
+  function setupRealtimeListener() {
+    if (!supabase) return;
+    
+    // Nettoyer l'ancien canal si existe
+    if (realtimeChannel) {
+      supabase.removeChannel(realtimeChannel);
+    }
+    
+    console.log('📡 Connexion au canal Realtime...');
+    
+    // Créer un canal pour écouter la table telechargements
+    realtimeChannel = supabase
+      .channel('telechargements-watch')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'telechargements'
+        },
+        async (payload) => {
+          console.log('🔄 Nouveau téléchargement détecté!', payload);
+          
+          // Récupérer les infos du stagiaire
+          const { data: stagiaire } = await supabase
+            .from('securite')
+            .select('prenom, nom, matricule')
+            .eq('id', payload.new.user_id)
+            .single();
+          
+          const nom = stagiaire ? `${stagiaire.prenom} ${stagiaire.nom}` : 'Un stagiaire';
+          const matricule = stagiaire?.matricule || '';
+          
+          // Afficher la notification
+          showNotification(
+            '📥 Nouveau téléchargement',
+            `${nom} (${matricule}) a téléchargé sa fiche`
+          );
+          
+          // Rafraîchir la liste
+          await loadDownloads();
+          showNotifBanner(`Nouveau: ${nom}`, 'success');
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Realtime status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Écoute Realtime active sur telechargements');
+        }
+      });
   }
 
   // ========== CHARGEMENT DES DONNÉES ==========
@@ -353,6 +384,7 @@
 
   async function handleLogout() {
     if (!confirm('Déconnexion ?')) return;
+    if (realtimeChannel) supabase.removeChannel(realtimeChannel);
     await supabase.auth.signOut();
     window.location.href = '/aejappmobile/auth.html';
   }
