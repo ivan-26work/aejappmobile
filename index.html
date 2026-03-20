@@ -145,8 +145,60 @@
     // Enregistrement du Service Worker pour PWA
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker enregistré', reg))
-        .catch(err => console.error('Erreur Service Worker', err));
+        .then(reg => {
+          console.log('✅ Service Worker enregistré', reg);
+          
+          // Gestion des mises à jour du Service Worker
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('🔄 Nouvelle version disponible, actualisez la page');
+                showNotification('Mise à jour disponible, actualisez la page', 'info');
+              }
+            });
+          });
+        })
+        .catch(err => console.error('❌ Erreur Service Worker', err));
+    }
+    
+    // Demande de permission pour les notifications push (après 5 secondes)
+    if ('Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            console.log('✅ Notifications activées');
+            // S'abonner aux notifications push
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.ready.then(registration => {
+                registration.pushManager.getSubscription().then(subscription => {
+                  if (!subscription) {
+                    console.log('📱 Prêt à recevoir des notifications push');
+                    // Ici, envoyer la clé d'abonnement au serveur
+                  }
+                });
+              });
+            }
+          }
+        });
+      }, 5000);
+    }
+    
+    // Fonction utilitaire pour les notifications (si non définie)
+    function showNotification(message, type) {
+      const notif = document.createElement('div');
+      notif.className = `temp-notification ${type}`;
+      notif.textContent = message;
+      document.body.appendChild(notif);
+      setTimeout(() => {
+        notif.style.opacity = '0';
+        setTimeout(() => notif.remove(), 300);
+      }, 3000);
+    }
+    
+    // Vérifier si l'app est installée (PWA)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      console.log('📱 Application ouverte en mode PWA (standalone)');
     }
   </script>
 </body>
