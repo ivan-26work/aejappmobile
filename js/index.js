@@ -1,5 +1,5 @@
 // ===== index.js =====
-// Version ultra simple - Mobile First
+// Version qui fonctionnait avant les notifications
 
 (function() {
   const SUPABASE_URL = 'https://lnwrwvwunwsqeuluupis.supabase.co';
@@ -12,9 +12,9 @@
   let selectedDates = new Set();
   let searchTimeout = null;
 
-  // DOM
   const loadingOverlay = document.getElementById('loadingOverlay');
   const searchInput = document.getElementById('searchInput');
+  const refreshBtn = document.getElementById('refreshBtn');
   const statTotal = document.getElementById('statTotal');
   const statStagiaires = document.getElementById('statStagiaires');
   const statMois = document.getElementById('statMois');
@@ -27,7 +27,7 @@
 
   async function init() {
     try {
-      if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+      loadingOverlay?.classList.remove('hidden');
       await initSupabase();
       const ok = await checkSession();
       if (!ok) return;
@@ -35,9 +35,9 @@
       setupEvents();
     } catch (e) {
       console.error(e);
-      goToAuth();
+      window.location.href = '/aejappmobile/auth.html';
     } finally {
-      if (loadingOverlay) setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
+      setTimeout(() => loadingOverlay?.classList.add('hidden'), 800);
     }
   }
 
@@ -58,14 +58,16 @@
   async function checkSession() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { goToAuth(); return false; }
+      if (!user) {
+        window.location.href = '/aejappmobile/auth.html';
+        return false;
+      }
       currentUser = user;
       return true;
-    } catch (e) { goToAuth(); return false; }
-  }
-
-  function goToAuth() {
-    window.location.href = '/aejappmobile/auth.html';
+    } catch (e) {
+      window.location.href = '/aejappmobile/auth.html';
+      return false;
+    }
   }
 
   async function loadData() {
@@ -81,15 +83,13 @@
 
   async function loadDownloads() {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('telechargements')
         .select(`
           id, date_telechargement, categorie, filiere, user_id,
           securite!inner (nom, prenom, matricule, telephone, filiere)
         `)
         .order('date_telechargement', { ascending: false });
-
-      if (error) throw error;
 
       allDownloads = (data || []).map(item => {
         const s = item.securite;
@@ -115,7 +115,7 @@
       renderDownloads();
     } catch (e) {
       console.error(e);
-      if (downloadsContainer) downloadsContainer.innerHTML = '<div class="empty-state"><p>Erreur chargement</p></div>';
+      if (downloadsContainer) downloadsContainer.innerHTML = '<div class="empty-state"><p>Erreur</p></div>';
     }
   }
 
@@ -251,13 +251,6 @@
     if (!s) return '';
     return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
   }
-  function showNotification(msg) {
-    const n = document.createElement('div');
-    n.className = 'temp-notification';
-    n.textContent = msg;
-    document.body.appendChild(n);
-    setTimeout(() => n.remove(), 2000);
-  }
 
   async function handleLogout() {
     if (!confirm('Déconnexion ?')) return;
@@ -270,6 +263,7 @@
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(applyFilters, 300);
     });
+    refreshBtn?.addEventListener('click', () => { loadData(); });
     logoutBtn?.addEventListener('click', handleLogout);
     closeDetailsOverlay?.addEventListener('click', () => detailsOverlay.classList.add('hidden'));
     detailsOverlay?.addEventListener('click', e => { if (e.target === detailsOverlay) detailsOverlay.classList.add('hidden'); });
